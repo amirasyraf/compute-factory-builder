@@ -1,0 +1,4 @@
+---
+- name: Explain unsupported Windows SSH bake
+  ansible.builtin.fail:
+    msg: Windows SSH CA bake tasks are not implemented in POC.

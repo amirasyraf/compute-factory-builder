@@ -1,0 +1,4 @@
+---
+- name: Explain unsupported Windows bake
+  ansible.builtin.fail:
+    msg: Windows common bake tasks are not implemented in POC.

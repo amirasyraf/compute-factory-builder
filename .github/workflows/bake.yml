@@ -1,0 +1,75 @@
+name: Bake golden images
+on:
+  push:
+    branches: [main]
+    paths: ['packer/**', 'ansible/**', 'images.yaml', 'requirements-ansible.txt', '.github/workflows/bake.yml']
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: bake-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      images: ${{ steps.images.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - run: pip install -r requirements-ansible.txt
+      - id: images
+        run: |
+          python - <<'PY'
+          import json, os, yaml
+          with open('images.yaml') as source:
+              matrix = {'include': yaml.safe_load(source)}
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('matrix=' + json.dumps(matrix) + '\n')
+          PY
+  bake:
+    needs: matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.images) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - run: pip install -r requirements-ansible.txt
+      - uses: hashicorp/setup-packer@v3
+        with:
+          version: '1.16.2'
+      - uses: aws-actions/configure-aws-credentials@v4
+        if: matrix.platform == 'aws'
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Read build inputs and bake
+        env:
+          CF_OS: ${{ matrix.os }}
+          CF_VERSION: ${{ matrix.version }}
+          CF_PLATFORM: ${{ matrix.platform }}
+          PKR_VAR_region: ${{ vars.AWS_REGION }}
+          PKR_VAR_git_sha: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$CF_PLATFORM" = aws
+          export PKR_VAR_ssh_ca_public_key="$(aws ssm get-parameter --name /compute-factory/ssh-ca-pub --query Parameter.Value --output text)"
+          export PKR_VAR_source_ami="$(aws ssm get-parameter --name "/aws/service/canonical/ubuntu/server/$CF_VERSION/stable/current/amd64/hvm/ebs-gp3/ami-id" --query Parameter.Value --output text)"
+          test "$(aws ec2 describe-images --image-ids "$PKR_VAR_source_ami" --query 'Images[0].OwnerId' --output text)" = 099720109477
+          packer init "packer/$CF_OS"
+          packer build -only="amazon-ebs.$CF_OS" "packer/$CF_OS"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: manifest-${{ matrix.os }}-${{ matrix.version }}-${{ matrix.platform }}
+          path: packer-manifest.json

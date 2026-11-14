@@ -1,0 +1,43 @@
+---
+- name: Require an ed25519 CA public key
+  ansible.builtin.assert:
+    that: cf_ssh_ca_public_key is match('^ssh-ed25519 [A-Za-z0-9+/=]+(?: .*)?$')
+    fail_msg: Pass the CA public key from SSM, not a private key.
+- name: Install CA trust
+  ansible.builtin.copy:
+    dest: /etc/ssh/trusted_user_ca_keys
+    content: "{{ cf_ssh_ca_public_key | trim }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+- name: Create principal directory
+  ansible.builtin.file:
+    path: /etc/ssh/auth_principals
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+- name: Install initial allowed principals
+  ansible.builtin.copy:
+    dest: /etc/ssh/auth_principals/ubuntu
+    content: "cf-automation\nteam-platform-admins\n"
+    owner: root
+    group: root
+    mode: "0644"
+- name: Configure SSH certificate authentication
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/00-compute-factory.conf
+    content: |
+      TrustedUserCAKeys /etc/ssh/trusted_user_ca_keys
+      AuthorizedPrincipalsFile /etc/ssh/auth_principals/%u
+      PasswordAuthentication no
+    owner: root
+    group: root
+    mode: "0644"
+- name: Validate SSH configuration
+  ansible.builtin.command: /usr/sbin/sshd -t
+  changed_when: false
+- name: Reload SSH
+  ansible.builtin.service:
+    name: ssh
+    state: reloaded

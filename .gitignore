@@ -1,0 +1,5 @@
+.venv/
+*.pkrvars.hcl
+!*.example.pkrvars.hcl
+packer-manifest.json
+__pycache__/

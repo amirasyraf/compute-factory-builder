@@ -1,0 +1,32 @@
+---
+- name: Upgrade all packages
+  ansible.builtin.apt:
+    update_cache: true
+    upgrade: full
+    lock_timeout: 600
+- name: Install base utilities only
+  ansible.builtin.apt:
+    name: [curl, jq, unzip]
+    state: present
+    lock_timeout: 600
+- name: Set UTC timezone
+  ansible.builtin.file:
+    src: /usr/share/zoneinfo/UTC
+    dest: /etc/localtime
+    state: link
+    force: true
+- name: Record timezone
+  ansible.builtin.copy:
+    dest: /etc/timezone
+    content: "UTC\n"
+    mode: "0644"
+- name: Create image metadata directory
+  ansible.builtin.file:
+    path: /etc/compute-factory
+    state: directory
+    mode: "0755"
+- name: Record image provenance
+  ansible.builtin.copy:
+    dest: /etc/compute-factory/image-info.json
+    content: "{{ {'image_name': cf_image_name, 'build_date': cf_build_date, 'git_sha': cf_git_sha} | to_nice_json }}\n"
+    mode: "0644"
