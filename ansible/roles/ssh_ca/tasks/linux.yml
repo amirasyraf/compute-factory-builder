@@ -1,7 +1,7 @@
 ---
 - name: Require an ed25519 CA public key
   ansible.builtin.assert:
-    that: cf_ssh_ca_public_key is match('^ssh-ed25519 [A-Za-z0-9+/=]+(?: .*)?$')
+    that: "cf_ssh_ca_public_key is match('^ssh-ed25519 [A-Za-z0-9+/=]+(?: .*)?$')"
     fail_msg: Pass the CA public key from SSM, not a private key.
 - name: Install CA trust
   ansible.builtin.copy:
