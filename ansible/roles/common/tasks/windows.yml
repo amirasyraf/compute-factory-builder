@@ -18,6 +18,23 @@
     name: fDenyTSConnections
     data: 0
     type: dword
+# As SYSTEM, Microsoft.WinGet.Client only works in PowerShell 7 (Windows PowerShell 5.1 refuses
+# with WindowsPowerShellNotSupported); the fry software stage runs it with pwsh.exe.
+- name: Download PowerShell 7 (LTS)
+  ansible.windows.win_get_url:
+    url: https://github.com/PowerShell/PowerShell/releases/download/v7.6.10/PowerShell-7.6.10-win-x64.msi
+    dest: C:\Windows\Temp\PowerShell-7.6.10-win-x64.msi
+    checksum: 7d8daea48b450d4d62fcd1ac4d6faa7ac2db5e11aba5061ee81b7496adca8c07
+    checksum_algorithm: sha256
+- name: Install PowerShell 7
+  ansible.windows.win_package:
+    path: C:\Windows\Temp\PowerShell-7.6.10-win-x64.msi
+    arguments: /quiet /norestart ADD_PATH=1 USE_MU=0 ENABLE_MU=0
+    creates_path: C:\Program Files\PowerShell\7\pwsh.exe
+- name: Remove the PowerShell 7 installer
+  ansible.windows.win_file:
+    path: C:\Windows\Temp\PowerShell-7.6.10-win-x64.msi
+    state: absent
 # The fry software stage installs catalog packages as SYSTEM with this module (the winget CLI is
 # not supported as SYSTEM). Installed for all users, with WinGet itself repaired machine-wide.
 - name: Install the WinGet PowerShell module for all users
@@ -29,12 +46,13 @@
       Install-Module -Name Microsoft.WinGet.Client -Repository PSGallery -Scope AllUsers -Force
       Import-Module Microsoft.WinGet.Client
       Repair-WinGetPackageManager -AllUsers -Force -Latest
-# As SYSTEM, the way the fry software stage uses it.
+# As SYSTEM in PowerShell 7, the way the fry software stage uses it.
 - name: Check that WinGet can search the catalog source
   become: true
   become_method: runas
   become_user: SYSTEM
   ansible.windows.win_powershell:
+    executable: C:\Program Files\PowerShell\7\pwsh.exe
     script: |
       $ErrorActionPreference = 'Stop'
       Import-Module Microsoft.WinGet.Client

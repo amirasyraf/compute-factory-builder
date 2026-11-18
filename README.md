@@ -33,7 +33,8 @@ certificate on Azure) and runs the same `bake.yml` over WinRM (`pywinrm`, `ansib
 collections from `ansible/requirements.yml`). The image gets OpenSSH Server with PowerShell as its shell
 and a certificates-only `sshd_config` (port forwarding allowed for browser RDP), the principals file for
 `Administrator` (AWS) or `cfadmin` (Azure), UTC, Remote Desktop allowed, provenance in
-`C:\ProgramData\ComputeFactory\image-info.json`, and the `Microsoft.WinGet.Client` module for all users.
+`C:\ProgramData\ComputeFactory\image-info.json`, PowerShell 7.6 LTS, and the `Microsoft.WinGet.Client` module for all users (as SYSTEM it works only in
+PowerShell 7).
 AWS finishes with `ec2launch reset`, Azure with sysprep. No Windows updates are applied at bake time.
 A Windows bake takes much longer than Ubuntu; the job timeout is 90 minutes.
 
