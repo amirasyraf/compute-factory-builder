@@ -77,8 +77,10 @@ locals {
 build {
   sources = ["source.amazon-ebs.ubuntu", "source.azure-arm.ubuntu"]
 
+  # Exit 2: cloud-init finished with recoverable errors (such as deprecation warnings).
   provisioner "shell" {
-    inline = ["sudo cloud-init status --wait"]
+    inline           = ["sudo cloud-init status --wait"]
+    valid_exit_codes = [0, 2]
   }
 
   provisioner "ansible" {

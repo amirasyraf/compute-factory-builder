@@ -91,14 +91,15 @@ locals {
 build {
   sources = ["source.amazon-ebs.windows", "source.azure-arm.windows"]
 
-  # Over WinRM (pywinrm on the runner). Packer's inventory supplies the host, port and user (and
-  # asks for Basic auth, which the connection file overrides with NTLM); the password is passed here.
+  # Over WinRM (pywinrm on the runner). Packer's inventory supplies the host and port (and asks for
+  # Basic auth, which the connection file overrides with NTLM). Its ansible_user is the runner's
+  # local user over WinRM, so the communicator's user and password are passed here.
   provisioner "ansible" {
     playbook_file = "${path.root}/../../ansible/bake.yml"
     use_proxy     = false
     extra_arguments = [
       "--extra-vars", "@${path.root}/../../ansible/connection/windows.yml",
-      "--extra-vars", jsonencode({ ansible_password = build.Password }),
+      "--extra-vars", jsonencode({ ansible_user = build.User, ansible_password = build.Password }),
       "--extra-vars", jsonencode({
         cf_image_name        = local.image_name
         cf_build_date        = local.build_date
