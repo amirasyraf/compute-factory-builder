@@ -46,6 +46,15 @@ variable "ssh_ca_public_key" {
   sensitive = true
 }
 
+variable "ssh_ca_fingerprint" {
+  type        = string
+  description = "OpenSSH SHA256 fingerprint of ssh_ca_public_key; tagged so ./poc can match images to the current CA."
+  validation {
+    condition     = can(regex("^SHA256:[A-Za-z0-9+/]{43}$", var.ssh_ca_fingerprint))
+    error_message = "Pass the SHA256 fingerprint printed by ssh-keygen -lf for the CA public key."
+  }
+}
+
 locals {
   build_date = timestamp()
   image_name = "cf-ubuntu-26.04-${formatdate("YYYYMMDDhhmmss", local.build_date)}"
@@ -60,6 +69,8 @@ locals {
     "cf:managed"    = "true"
     "cf:poc"        = "true"
     "cf:git-sha"    = var.git_sha
+    # The baked CA trust; an image is reusable only while this CA exists.
+    "cf:ssh-ca-fingerprint" = var.ssh_ca_fingerprint
   }
 }
 

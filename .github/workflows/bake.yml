@@ -73,11 +73,18 @@ jobs:
           PKR_VAR_git_sha: ${{ github.sha }}
         run: |
           set -euo pipefail
-          export PKR_VAR_ssh_ca_public_key="$(aws ssm get-parameter --name /compute-factory/ssh-ca-pub --query Parameter.Value --output text)"
+          PKR_VAR_ssh_ca_public_key="$(aws ssm get-parameter --name /compute-factory/ssh-ca-pub --query Parameter.Value --output text)"
+          ca_pub="$(mktemp)"
+          printf '%s\n' "$PKR_VAR_ssh_ca_public_key" >"$ca_pub"
+          # Tagged on every image so ./poc reuses images only while this CA exists.
+          PKR_VAR_ssh_ca_fingerprint="$(ssh-keygen -lf "$ca_pub" | awk '{print $2}')"
+          rm -f "$ca_pub"
+          export PKR_VAR_ssh_ca_public_key PKR_VAR_ssh_ca_fingerprint
           case "$CF_PLATFORM" in
             aws)
               source=amazon-ebs
-              export PKR_VAR_source_ami="$(aws ssm get-parameter --name "/aws/service/canonical/ubuntu/server/$CF_VERSION/stable/current/amd64/hvm/ebs-gp3/ami-id" --query Parameter.Value --output text)"
+              PKR_VAR_source_ami="$(aws ssm get-parameter --name "/aws/service/canonical/ubuntu/server/$CF_VERSION/stable/current/amd64/hvm/ebs-gp3/ami-id" --query Parameter.Value --output text)"
+              export PKR_VAR_source_ami
               test "$(aws ec2 describe-images --image-ids "$PKR_VAR_source_ami" --query 'Images[0].OwnerId' --output text)" = 099720109477
               ;;
             # The Azure source is Canonical's Marketplace image (publisher pinned in the source file).
