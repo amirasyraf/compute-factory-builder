@@ -15,6 +15,7 @@ concurrency:
 
 jobs:
   matrix:
+    if: vars.CF_POC_MAINTENANCE != '1'
     runs-on: ubuntu-latest
     outputs:
       images: ${{ steps.images.outputs.matrix }}
@@ -34,6 +35,7 @@ jobs:
               output.write('matrix=' + json.dumps(matrix) + '\n')
           PY
   bake:
+    if: vars.CF_POC_MAINTENANCE != '1'
     needs: matrix
     runs-on: ubuntu-latest
     timeout-minutes: 45

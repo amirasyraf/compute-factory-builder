@@ -5,7 +5,8 @@ every platform in `images.yaml`: an AMI in the default AWS VPC, and an Azure
 Compute Gallery version of `cf-images/cfimages/ubuntu` (from Canonical's
 Marketplace image `ubuntu-26_04-lts/server`, Gen2; version `1.<YYYYMMDD>.<hhmmss>`,
 generalized with `waagent -deprovision+user`). Pushes to `main` and manual
-dispatch run the matrix. Authentication is OIDC only: AWS (`AWS_ROLE_ARN`,
+dispatch run the matrix unless repository variable `CF_POC_MAINTENANCE=1` is set
+by teardown. Authentication is OIDC only: AWS (`AWS_ROLE_ARN`,
 `AWS_REGION`) for every row, because the CA public key is read from SSM at build
 time and is never committed; Azure (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
 `AZURE_SUBSCRIPTION_ID`, `AZURE_LOCATION`, `azure/login`) for Azure rows. The
