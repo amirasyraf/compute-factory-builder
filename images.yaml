@@ -1,3 +1,6 @@
 - os: ubuntu
   version: "26.04"
   platform: aws
+- os: ubuntu
+  version: "26.04"
+  platform: azure

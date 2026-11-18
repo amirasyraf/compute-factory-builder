@@ -49,26 +49,41 @@ jobs:
       - uses: hashicorp/setup-packer@v3
         with:
           version: '1.16.2'
+      # AWS is always needed: the CA public key is in SSM.
       - uses: aws-actions/configure-aws-credentials@v4
-        if: matrix.platform == 'aws'
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+      - uses: azure/login@v3
+        if: matrix.platform == 'azure'
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - name: Read build inputs and bake
         env:
           CF_OS: ${{ matrix.os }}
           CF_VERSION: ${{ matrix.version }}
           CF_PLATFORM: ${{ matrix.platform }}
           PKR_VAR_region: ${{ vars.AWS_REGION }}
+          PKR_VAR_azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          PKR_VAR_azure_location: ${{ vars.AZURE_LOCATION }}
           PKR_VAR_git_sha: ${{ github.sha }}
         run: |
           set -euo pipefail
-          test "$CF_PLATFORM" = aws
           export PKR_VAR_ssh_ca_public_key="$(aws ssm get-parameter --name /compute-factory/ssh-ca-pub --query Parameter.Value --output text)"
-          export PKR_VAR_source_ami="$(aws ssm get-parameter --name "/aws/service/canonical/ubuntu/server/$CF_VERSION/stable/current/amd64/hvm/ebs-gp3/ami-id" --query Parameter.Value --output text)"
-          test "$(aws ec2 describe-images --image-ids "$PKR_VAR_source_ami" --query 'Images[0].OwnerId' --output text)" = 099720109477
+          case "$CF_PLATFORM" in
+            aws)
+              source=amazon-ebs
+              export PKR_VAR_source_ami="$(aws ssm get-parameter --name "/aws/service/canonical/ubuntu/server/$CF_VERSION/stable/current/amd64/hvm/ebs-gp3/ami-id" --query Parameter.Value --output text)"
+              test "$(aws ec2 describe-images --image-ids "$PKR_VAR_source_ami" --query 'Images[0].OwnerId' --output text)" = 099720109477
+              ;;
+            # The Azure source is Canonical's Marketplace image (publisher pinned in the source file).
+            azure) source=azure-arm ;;
+            *) echo "Unsupported platform $CF_PLATFORM" >&2; exit 1 ;;
+          esac
           packer init "packer/$CF_OS"
-          packer build -only="amazon-ebs.$CF_OS" "packer/$CF_OS"
+          packer build -only="$source.$CF_OS" "packer/$CF_OS"
       - uses: actions/upload-artifact@v4
         with:
           name: manifest-${{ matrix.os }}-${{ matrix.version }}-${{ matrix.platform }}

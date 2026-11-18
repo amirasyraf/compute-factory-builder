@@ -5,6 +5,10 @@ packer {
       version = ">= 1.3.0, < 2.0.0"
       source  = "github.com/hashicorp/amazon"
     }
+    azure = {
+      version = ">= 2.6.0, < 3.0.0"
+      source  = "github.com/hashicorp/azure"
+    }
     ansible = {
       version = ">= 1.1.0, < 2.0.0"
       source  = "github.com/hashicorp/ansible"
@@ -19,7 +23,18 @@ variable "region" {
 
 variable "source_ami" {
   type        = string
-  description = "Official Canonical AMI, resolved from the Ubuntu 26.04 public SSM parameter."
+  default     = ""
+  description = "AWS only: official Canonical AMI, resolved from the Ubuntu 26.04 public SSM parameter."
+}
+
+variable "azure_subscription_id" {
+  type    = string
+  default = ""
+}
+
+variable "azure_location" {
+  type    = string
+  default = "australiaeast"
 }
 
 variable "git_sha" {
@@ -34,6 +49,10 @@ variable "ssh_ca_public_key" {
 locals {
   build_date = timestamp()
   image_name = "cf-ubuntu-26.04-${formatdate("YYYYMMDDhhmmss", local.build_date)}"
+  # Azure gallery versions are three integers; leading zeros are not allowed.
+  gallery_version = "1.${formatdate("YYYYMMDD", local.build_date)}.${regex_replace(formatdate("hhmmss", local.build_date), "^0+(.)", "$1")}"
+  # The OS login user created at launch on every platform.
+  ssh_user = "ubuntu"
   image_tags = {
     "cf:os"         = "ubuntu"
     "cf:os-family"  = "linux"
@@ -45,7 +64,7 @@ locals {
 }
 
 build {
-  sources = ["source.amazon-ebs.ubuntu"]
+  sources = ["source.amazon-ebs.ubuntu", "source.azure-arm.ubuntu"]
 
   provisioner "shell" {
     inline = ["sudo cloud-init status --wait"]
@@ -53,14 +72,22 @@ build {
 
   provisioner "ansible" {
     playbook_file = "${path.root}/../../ansible/bake.yml"
-    user          = "ubuntu"
     use_proxy     = false
     extra_arguments = ["--extra-vars", jsonencode({
       cf_image_name        = local.image_name
       cf_build_date        = local.build_date
       cf_git_sha           = var.git_sha
       cf_ssh_ca_public_key = var.ssh_ca_public_key
+      cf_ssh_user          = local.ssh_user
     })]
+  }
+
+  # Azure images must be generalized; this also removes the temporary Packer build user.
+  provisioner "shell" {
+    only            = ["azure-arm.ubuntu"]
+    execute_command = "chmod +x {{ .Path }}; {{ .Vars }} sudo -E sh '{{ .Path }}'"
+    inline          = ["/usr/sbin/waagent -force -deprovision+user && export HISTSIZE=0 && sync"]
+    skip_clean      = true
   }
 
   post-processor "manifest" {

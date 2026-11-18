@@ -19,7 +19,8 @@
     mode: "0755"
 - name: Install initial allowed principals
   ansible.builtin.copy:
-    dest: /etc/ssh/auth_principals/ubuntu
+    # The OS login user created at launch (Packer passes it per OS; the build user may differ).
+    dest: "/etc/ssh/auth_principals/{{ cf_ssh_user }}"
     content: "cf-automation\nteam-platform-admins\n"
     owner: root
     group: root
