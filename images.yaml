@@ -4,3 +4,9 @@
 - os: ubuntu
   version: "26.04"
   platform: azure
+- os: windows
+  version: "2025"
+  platform: aws
+- os: windows
+  version: "2025"
+  platform: azure

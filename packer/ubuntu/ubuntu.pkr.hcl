@@ -84,13 +84,16 @@ build {
   provisioner "ansible" {
     playbook_file = "${path.root}/../../ansible/bake.yml"
     use_proxy     = false
-    extra_arguments = ["--extra-vars", jsonencode({
-      cf_image_name        = local.image_name
-      cf_build_date        = local.build_date
-      cf_git_sha           = var.git_sha
-      cf_ssh_ca_public_key = var.ssh_ca_public_key
-      cf_ssh_user          = local.ssh_user
-    })]
+    extra_arguments = [
+      "--extra-vars", "@${path.root}/../../ansible/connection/linux.yml",
+      "--extra-vars", jsonencode({
+        cf_image_name        = local.image_name
+        cf_build_date        = local.build_date
+        cf_git_sha           = var.git_sha
+        cf_ssh_ca_public_key = var.ssh_ca_public_key
+        cf_ssh_user          = local.ssh_user
+      }),
+    ]
   }
 
   # Azure images must be generalized; this also removes the temporary Packer build user.

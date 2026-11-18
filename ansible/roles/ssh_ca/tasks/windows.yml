@@ -1,4 +1,78 @@
 ---
-- name: Explain unsupported Windows SSH bake
-  ansible.builtin.fail:
-    msg: Windows SSH CA bake tasks are not implemented in POC.
+- name: Require an ed25519 CA public key
+  ansible.builtin.assert:
+    that: "cf_ssh_ca_public_key is match('^ssh-ed25519 [A-Za-z0-9+/=]+(?: .*)?$')"
+    fail_msg: Pass the CA public key from SSM, not a private key.
+# Windows Server 2025 ships OpenSSH Server; install it if this image does not have it.
+- name: Install OpenSSH Server
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = $false
+      $capability = Get-WindowsCapability -Online | Where-Object Name -like 'OpenSSH.Server*'
+      if ($capability.State -ne 'Installed') {
+        Add-WindowsCapability -Online -Name $capability.Name | Out-Null
+        $Ansible.Changed = $true
+      }
+# The first start creates C:\ProgramData\ssh with the ACLs sshd requires, and the host keys.
+- name: Start sshd once to initialize its directory
+  ansible.windows.win_service:
+    name: sshd
+    start_mode: auto
+    state: started
+- name: Use PowerShell as the SSH login shell
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\OpenSSH
+    name: DefaultShell
+    data: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+    type: string
+- name: Install CA trust
+  ansible.windows.win_copy:
+    dest: C:\ProgramData\ssh\trusted_user_ca_keys
+    content: "{{ cf_ssh_ca_public_key | trim }}\n"
+- name: Create principal directory
+  ansible.windows.win_file:
+    path: C:\ProgramData\ssh\auth_principals
+    state: directory
+- name: Install initial allowed principals
+  ansible.windows.win_copy:
+    # The OS login user created at launch (Packer passes it per platform; the build user differs).
+    dest: "C:\\ProgramData\\ssh\\auth_principals\\{{ cf_ssh_user }}"
+    content: "cf-automation\nteam-platform-admins\n"
+- name: Create the login banner placeholder (the fry baseline stage writes it)
+  ansible.windows.win_copy:
+    dest: C:\ProgramData\ComputeFactory\banner.txt
+    content: "Compute Factory\n"
+    force: false
+# The whole file: only CA certificates log in (no authorized_keys, including the default
+# administrators_authorized_keys block), and no passwords. Port forwarding stays allowed (browser RDP).
+- name: Configure SSH certificate authentication
+  ansible.windows.win_copy:
+    dest: C:\ProgramData\ssh\sshd_config
+    content: |
+      TrustedUserCAKeys __PROGRAMDATA__/ssh/trusted_user_ca_keys
+      AuthorizedPrincipalsFile __PROGRAMDATA__/ssh/auth_principals/%u
+      AuthorizedKeysFile none
+      PubkeyAuthentication yes
+      PasswordAuthentication no
+      AllowTcpForwarding yes
+      Banner __PROGRAMDATA__/ComputeFactory/banner.txt
+      Subsystem sftp sftp-server.exe
+- name: Validate SSH configuration
+  ansible.windows.win_command: C:\Windows\System32\OpenSSH\sshd.exe -t
+  changed_when: false
+- name: Allow SSH through the Windows firewall
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = $false
+      if (-not (Get-NetFirewallRule -Name OpenSSH-Server-In-TCP -ErrorAction SilentlyContinue)) {
+        New-NetFirewallRule -Name OpenSSH-Server-In-TCP -DisplayName 'OpenSSH Server (sshd)' -Enabled True `
+          -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 | Out-Null
+        $Ansible.Changed = $true
+      }
+      Enable-NetFirewallRule -Name OpenSSH-Server-In-TCP
+- name: Restart sshd with the new configuration
+  ansible.windows.win_service:
+    name: sshd
+    state: restarted

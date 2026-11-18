@@ -1,23 +1,26 @@
 ---
 - name: Bake the Compute Factory golden image
   hosts: all
-  become: true
   roles:
     - common
     - ssh_ca
   post_tasks:
-    - name: Clean package cache
-      ansible.builtin.command: apt-get clean
-      changed_when: true
-    - name: Reset cloud-init state for the next boot
-      ansible.builtin.command: cloud-init clean --logs --machine-id
-      changed_when: true
-    - name: Reset machine identity
-      ansible.builtin.copy:
-        dest: /etc/machine-id
-        content: ""
-        mode: "0444"
-    - name: Remove duplicate D-Bus identity
-      ansible.builtin.file:
-        path: /var/lib/dbus/machine-id
-        state: absent
+    # Windows images are generalized by the Packer template instead (EC2Launch reset, sysprep).
+    - name: Generalize the Linux image
+      when: ansible_facts.os_family != 'Windows'
+      block:
+        - name: Clean package cache
+          ansible.builtin.command: apt-get clean
+          changed_when: true
+        - name: Reset cloud-init state for the next boot
+          ansible.builtin.command: cloud-init clean --logs --machine-id
+          changed_when: true
+        - name: Reset machine identity
+          ansible.builtin.copy:
+            dest: /etc/machine-id
+            content: ""
+            mode: "0444"
+        - name: Remove duplicate D-Bus identity
+          ansible.builtin.file:
+            path: /var/lib/dbus/machine-id
+            state: absent

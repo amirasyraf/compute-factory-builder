@@ -1,4 +1,42 @@
 ---
-- name: Explain unsupported Windows bake
-  ansible.builtin.fail:
-    msg: Windows common bake tasks are not implemented in POC.
+# Windows updates are not applied here: the AWS and Azure base images are patched monthly, and a
+# VM's OS Updates action installs the rest. Base packages: none beyond the OS.
+- name: Set UTC timezone
+  ansible.windows.win_timezone:
+    timezone: UTC
+- name: Create image metadata directory
+  ansible.windows.win_file:
+    path: C:\ProgramData\ComputeFactory
+    state: directory
+- name: Record image provenance
+  ansible.windows.win_copy:
+    dest: C:\ProgramData\ComputeFactory\image-info.json
+    content: "{{ {'image_name': cf_image_name, 'build_date': cf_build_date, 'git_sha': cf_git_sha} | to_nice_json }}\n"
+- name: Allow Remote Desktop logins (browser RDP reaches them through an SSH tunnel)
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server
+    name: fDenyTSConnections
+    data: 0
+    type: dword
+# The fry software stage installs catalog packages as SYSTEM with this module (the winget CLI is
+# not supported as SYSTEM). Installed for all users, with WinGet itself repaired machine-wide.
+- name: Install the WinGet PowerShell module for all users
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+      Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers | Out-Null
+      Install-Module -Name Microsoft.WinGet.Client -Repository PSGallery -Scope AllUsers -Force
+      Import-Module Microsoft.WinGet.Client
+      Repair-WinGetPackageManager -AllUsers -Force -Latest
+# As SYSTEM, the way the fry software stage uses it.
+- name: Check that WinGet can search the catalog source
+  become: true
+  become_method: runas
+  become_user: SYSTEM
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      Import-Module Microsoft.WinGet.Client
+      $Ansible.Changed = $false
+      if (-not (Find-WinGetPackage -Id Git.Git -MatchOption Equals -Source winget)) { throw 'WinGet cannot find Git.Git' }

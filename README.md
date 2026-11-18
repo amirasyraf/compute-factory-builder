@@ -1,7 +1,8 @@
 # Compute Factory — Bake
 
-Builds an official Canonical Ubuntu 26.04 amd64 image with Packer and Ansible on
-every platform in `images.yaml`: an AMI in the default AWS VPC, and an Azure
+Builds golden images with Packer and Ansible for every `images.yaml` row: Ubuntu 26.04
+(`packer/ubuntu`) and Windows Server 2025 (`packer/windows`), each on AWS and Azure. Ubuntu is built
+from the official Canonical amd64 image: an AMI in the default AWS VPC, and an Azure
 Compute Gallery version of `cf-images/cfimages/ubuntu` (from Canonical's
 Marketplace image `ubuntu-26_04-lts/server`, Gen2; version `1.<YYYYMMDD>.<hhmmss>`,
 generalized with `waagent -deprovision+user`). Pushes to `main` and manual
@@ -24,12 +25,24 @@ The image includes base utilities, UTC, provenance in
 OS login user, `cf_ssh_user`, which may differ from the Packer build user). Software selections are
 installed later by the platform repo's fry playbooks.
 
+Windows Server 2025 (`packer/windows`, `os_version` from the row): AWS from Amazon's
+`Windows_Server-2025-English-Full-Base` AMI (public SSM parameter, owner `801119661308`), Azure from
+`MicrosoftWindowsServer:WindowsServer:2025-datacenter-g2` into gallery definition `windows-2025`. Packer
+connects over WinRM HTTPS with NTLM (`winrm.ps1` user data on AWS; Packer's temporary Key Vault
+certificate on Azure) and runs the same `bake.yml` over WinRM (`pywinrm`, `ansible/connection/windows.yml`,
+collections from `ansible/requirements.yml`). The image gets OpenSSH Server with PowerShell as its shell
+and a certificates-only `sshd_config` (port forwarding allowed for browser RDP), the principals file for
+`Administrator` (AWS) or `cfadmin` (Azure), UTC, Remote Desktop allowed, provenance in
+`C:\ProgramData\ComputeFactory\image-info.json`, and the `Microsoft.WinGet.Client` module for all users.
+AWS finishes with `ec2launch reset`, Azure with sysprep. No Windows updates are applied at bake time.
+A Windows bake takes much longer than Ubuntu; the job timeout is 90 minutes.
+
 ## Local checks
 
 Install Packer 1.16.2 and Python 3.12–3.14, then
-`pip install -r requirements-ansible.txt`. Run `packer init packer/ubuntu`,
-`packer fmt -check packer/ubuntu`, `packer validate -syntax-only packer/ubuntu`,
-and `ansible-playbook --syntax-check -i localhost, ansible/bake.yml`.
+`pip install -r requirements-ansible.txt` and `ansible-galaxy collection install -r ansible/requirements.yml`.
+For each of `packer/ubuntu` and `packer/windows` run `packer init`, `packer fmt -check` and
+`packer validate -syntax-only`, then `ansible-playbook --syntax-check -i localhost, ansible/bake.yml`.
 
 For a local build, export `PKR_VAR_ssh_ca_public_key`, its `PKR_VAR_ssh_ca_fingerprint`
 (`SHA256:…` from `ssh-keygen -lf`), `PKR_VAR_git_sha` and, for AWS,
@@ -39,8 +52,8 @@ with an `az login`, then `packer build -only=azure-arm.ubuntu packer/ubuntu`.
 
 ## Extend
 
-Add an OS directory under `packer/`, its role task files (Windows stubs currently
-fail explicitly), and a row in `images.yaml`. Add another platform with
+Add an OS directory under `packer/` (named after the `images.yaml` `os`), its role task files, its base
+image case in the workflow, and a row in `images.yaml`. Add another platform with
 `source.<platform>.pkr.hcl` beside the OS build file (any platform-specific
 generalization as an `only` provisioner), then extend the workflow's
 authentication/source selector and add a matrix row. Keep common guest setup in

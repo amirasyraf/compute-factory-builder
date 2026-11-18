@@ -38,7 +38,8 @@ jobs:
     if: vars.CF_POC_MAINTENANCE != '1'
     needs: matrix
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Windows builds (WinRM, sysprep, gallery replication) take much longer than Linux ones.
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.matrix.outputs.images) }}
@@ -47,7 +48,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.14'
-      - run: pip install -r requirements-ansible.txt
+      - run: |
+          pip install -r requirements-ansible.txt
+          ansible-galaxy collection install -r ansible/requirements.yml
       - uses: hashicorp/setup-packer@v3
         with:
           version: '1.16.2'
@@ -80,14 +83,27 @@ jobs:
           PKR_VAR_ssh_ca_fingerprint="$(ssh-keygen -lf "$ca_pub" | awk '{print $2}')"
           rm -f "$ca_pub"
           export PKR_VAR_ssh_ca_public_key PKR_VAR_ssh_ca_fingerprint
+          case "$CF_OS" in
+            # Official base AMIs from public SSM parameters, and their expected owner.
+            ubuntu)
+              ami_parameter="/aws/service/canonical/ubuntu/server/$CF_VERSION/stable/current/amd64/hvm/ebs-gp3/ami-id"
+              ami_owner=099720109477 # Canonical
+              ;;
+            windows)
+              ami_parameter="/aws/service/ami-windows-latest/Windows_Server-$CF_VERSION-English-Full-Base"
+              ami_owner=801119661308 # Amazon (Windows AMIs)
+              export PKR_VAR_os_version="$CF_VERSION"
+              ;;
+            *) echo "Unsupported OS $CF_OS" >&2; exit 1 ;;
+          esac
           case "$CF_PLATFORM" in
             aws)
               source=amazon-ebs
-              PKR_VAR_source_ami="$(aws ssm get-parameter --name "/aws/service/canonical/ubuntu/server/$CF_VERSION/stable/current/amd64/hvm/ebs-gp3/ami-id" --query Parameter.Value --output text)"
+              PKR_VAR_source_ami="$(aws ssm get-parameter --name "$ami_parameter" --query Parameter.Value --output text)"
               export PKR_VAR_source_ami
-              test "$(aws ec2 describe-images --image-ids "$PKR_VAR_source_ami" --query 'Images[0].OwnerId' --output text)" = 099720109477
+              test "$(aws ec2 describe-images --image-ids "$PKR_VAR_source_ami" --query 'Images[0].OwnerId' --output text)" = "$ami_owner"
               ;;
-            # The Azure source is Canonical's Marketplace image (publisher pinned in the source file).
+            # Azure sources are publisher Marketplace images (publisher pinned in the source files).
             azure) source=azure-arm ;;
             *) echo "Unsupported platform $CF_PLATFORM" >&2; exit 1 ;;
           esac

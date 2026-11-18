@@ -1,0 +1,8 @@
+---
+# Connection settings for Windows builds: Packer's WinRM communicator over HTTPS with a
+# self-signed certificate (Packer supplies the host, user and password). The build user is an administrator.
+ansible_connection: winrm
+ansible_winrm_transport: ntlm
+ansible_winrm_server_cert_validation: ignore
+ansible_winrm_operation_timeout_sec: 120
+ansible_winrm_read_timeout_sec: 150
