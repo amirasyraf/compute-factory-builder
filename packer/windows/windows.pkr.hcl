@@ -100,8 +100,9 @@ build {
     ansible_env_vars = ["CF_WINRM_PASSWORD=${build.Password}"]
     extra_arguments = [
       "--extra-vars", "@${path.root}/../../ansible/connection/windows.yml",
-      # Not the password: Packer logs this command line (passed through the environment below).
-      "--extra-vars", jsonencode({ ansible_user = build.User, ansible_password = "{{ lookup('env', 'CF_WINRM_PASSWORD') }}" }),
+      # Not the password: Packer logs this command line. connection/windows.yml reads it from the
+      # environment below (Packer would template a {{ }} expression placed here).
+      "--extra-vars", jsonencode({ ansible_user = build.User }),
       "--extra-vars", jsonencode({
         cf_image_name        = local.image_name
         cf_build_date        = local.build_date
