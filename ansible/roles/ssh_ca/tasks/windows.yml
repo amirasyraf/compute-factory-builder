@@ -71,7 +71,12 @@
           -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 | Out-Null
         $Ansible.Changed = $true
       }
-      Enable-NetFirewallRule -Name OpenSSH-Server-In-TCP
+      # The built-in rule covers only the Private profile; cloud NICs are on the Public profile.
+      $rule = Get-NetFirewallRule -Name OpenSSH-Server-In-TCP
+      if ("$($rule.Enabled)" -ne 'True' -or "$($rule.Profile)" -ne 'Any') {
+        Set-NetFirewallRule -Name OpenSSH-Server-In-TCP -Enabled True -Profile Any
+        $Ansible.Changed = $true
+      }
 - name: Restart sshd with the new configuration
   ansible.windows.win_service:
     name: sshd

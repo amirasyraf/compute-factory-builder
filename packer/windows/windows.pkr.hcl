@@ -95,11 +95,13 @@ build {
   # Basic auth, which the connection file overrides with NTLM). Its ansible_user is the runner's
   # local user over WinRM, so the communicator's user and password are passed here.
   provisioner "ansible" {
-    playbook_file = "${path.root}/../../ansible/bake.yml"
-    use_proxy     = false
+    playbook_file    = "${path.root}/../../ansible/bake.yml"
+    use_proxy        = false
+    ansible_env_vars = ["CF_WINRM_PASSWORD=${build.Password}"]
     extra_arguments = [
       "--extra-vars", "@${path.root}/../../ansible/connection/windows.yml",
-      "--extra-vars", jsonencode({ ansible_user = build.User, ansible_password = build.Password }),
+      # Not the password: Packer logs this command line (passed through the environment below).
+      "--extra-vars", jsonencode({ ansible_user = build.User, ansible_password = "{{ lookup('env', 'CF_WINRM_PASSWORD') }}" }),
       "--extra-vars", jsonencode({
         cf_image_name        = local.image_name
         cf_build_date        = local.build_date
