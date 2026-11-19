@@ -51,6 +51,12 @@ variable "git_sha" {
   type = string
 }
 
+# This workflow job's build: run ID, attempt and matrix row. Cleans up a cancelled or failed build.
+variable "bake_run" {
+  type    = string
+  default = "local"
+}
+
 variable "ssh_ca_public_key" {
   type      = string
   sensitive = true
@@ -83,6 +89,7 @@ locals {
     "cf:managed"    = "true"
     "cf:poc"        = "true"
     "cf:git-sha"    = var.git_sha
+    "cf:bake-run"   = var.bake_run
     # The baked CA trust; an image is reusable only while this CA exists.
     "cf:ssh-ca-fingerprint" = var.ssh_ca_fingerprint
   }

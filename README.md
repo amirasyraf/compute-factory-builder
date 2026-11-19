@@ -42,6 +42,10 @@ has its own shorter deadline so a stuck step fails fast. Before sysprep, Azure r
 packages installed for a user but not provisioned for all users (such as the WinGet source), which
 sysprep otherwise refuses (0x80073cf2).
 
+A failed, cancelled or timed-out job removes its own leftover build machine, `packer_*` security
+group and key pair, or Azure `pkr-*` resource group (`scripts/cleanup-build.sh`, matched by the
+`cf:bake-run` tag that Packer puts on them). Packer cannot clean up when the job is cancelled.
+
 ## Local checks
 
 Install Packer 1.16.2 and Python 3.12–3.14, then

@@ -75,6 +75,7 @@ jobs:
           PKR_VAR_azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           PKR_VAR_azure_location: ${{ vars.AZURE_LOCATION }}
           PKR_VAR_git_sha: ${{ github.sha }}
+          PKR_VAR_bake_run: ${{ github.run_id }}-${{ github.run_attempt }}-${{ strategy.job-index }}
         run: |
           set -euo pipefail
           PKR_VAR_ssh_ca_public_key="$(aws ssm get-parameter --name /compute-factory/ssh-ca-pub --query Parameter.Value --output text)"
@@ -110,6 +111,26 @@ jobs:
           esac
           packer init "packer/$CF_OS"
           packer build -only="$source.$CF_OS" "packer/$CF_OS"
+      # A cancelled or timed-out job kills Packer before it removes its build machine. Credentials are
+      # renewed (the first ones may have expired by the job timeout).
+      - uses: aws-actions/configure-aws-credentials@v4
+        if: (cancelled() || failure()) && matrix.platform == 'aws'
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: azure/login@v3
+        if: (cancelled() || failure()) && matrix.platform == 'azure'
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Remove this build's leftover resources
+        if: cancelled() || failure()
+        timeout-minutes: 20
+        env:
+          CF_PLATFORM: ${{ matrix.platform }}
+          CF_BAKE_RUN: ${{ github.run_id }}-${{ github.run_attempt }}-${{ strategy.job-index }}
+        run: bash scripts/cleanup-build.sh
       - uses: actions/upload-artifact@v4
         with:
           name: manifest-${{ matrix.os }}-${{ matrix.version }}-${{ matrix.platform }}
