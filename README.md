@@ -1,4 +1,4 @@
-# Compute Factory — Bake
+# Vendy — Bake
 
 Builds golden images with Packer and Ansible for every `images.yaml` row: Ubuntu 26.04
 (`packer/ubuntu`) and Windows Server 2025 (`packer/windows`), each on AWS and Azure. Ubuntu is built

@@ -42,7 +42,7 @@
 - name: Create the login banner placeholder (the fry baseline stage writes it)
   ansible.windows.win_copy:
     dest: C:\ProgramData\ComputeFactory\banner.txt
-    content: "Compute Factory\n"
+    content: "Vendy\n"
     force: false
 # The whole file: only CA certificates log in (no authorized_keys, including the default
 # administrators_authorized_keys block), and no passwords. Port forwarding stays allowed (browser RDP).

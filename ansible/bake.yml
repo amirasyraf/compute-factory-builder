@@ -1,5 +1,5 @@
 ---
-- name: Bake the Compute Factory golden image
+- name: Bake the Vendy golden image
   hosts: all
   roles:
     - common
