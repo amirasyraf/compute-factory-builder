@@ -36,7 +36,9 @@
     path: C:\Windows\Temp\PowerShell-7.6.10-win-x64.msi
     state: absent
 # The fry software stage installs catalog packages as SYSTEM with this module (the winget CLI is
-# not supported as SYSTEM). Installed for all users, with WinGet itself repaired machine-wide.
+# not supported as SYSTEM); it needs App Installer (WinGet) installed. The Azure base image has none,
+# and sysprep refuses app packages installed for a user but not provisioned for all users, so the
+# pinned WinGet release is provisioned for all users and installed for the build user.
 - name: Install the WinGet PowerShell module for all users
   ansible.windows.win_powershell:
     script: |
@@ -44,8 +46,34 @@
       [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
       Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers | Out-Null
       Install-Module -Name Microsoft.WinGet.Client -Repository PSGallery -Scope AllUsers -Force
-      Import-Module Microsoft.WinGet.Client
-      Repair-WinGetPackageManager -AllUsers -Force -Latest
+- name: Provision WinGet (App Installer) for all users
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      $ProgressPreference = 'SilentlyContinue'
+      $base = 'https://github.com/microsoft/winget-cli/releases/download/v1.29.380'
+      $files = @{
+        'Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle' = '65dea9c01ce08ee7b763366b27c0e651f97db857c11ca9b9c301826c10092f2e'
+        'DesktopAppInstaller_Dependencies.zip' = 'ba875afe9d190f61218985ac0292a99d1db710bf93e13c68944ca9d89f0d82d1'
+        'e53e159d00e04f729cc2180cffd1c02e_License1.xml' = 'bcb15118ec47df24e3e6013a7006147c3a15b3a8104ed660fe87c8b4ed01f485'
+      }
+      $dir = Join-Path $env:TEMP 'cf-winget'
+      New-Item -ItemType Directory -Force -Path $dir | Out-Null
+      foreach ($name in $files.Keys) {
+        $path = Join-Path $dir $name
+        Invoke-WebRequest -UseBasicParsing -Uri "$base/$name" -OutFile $path
+        if ((Get-FileHash $path -Algorithm SHA256).Hash -ne $files[$name]) { throw "checksum mismatch: $name" }
+      }
+      Expand-Archive -Force -Path (Join-Path $dir 'DesktopAppInstaller_Dependencies.zip') -DestinationPath (Join-Path $dir 'deps')
+      $deps = @(Get-ChildItem -Recurse -Path (Join-Path $dir 'deps') -Include *.appx, *.msix | Where-Object { $_.FullName -match '\\x64\\' }).FullName
+      if (-not $deps) { throw 'no x64 dependency packages in DesktopAppInstaller_Dependencies.zip' }
+      $bundle = Join-Path $dir 'Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle'
+      Add-AppxProvisionedPackage -Online -PackagePath $bundle -DependencyPackagePath $deps `
+        -LicensePath (Join-Path $dir 'e53e159d00e04f729cc2180cffd1c02e_License1.xml') | Out-Null
+      Add-AppxPackage -Path $bundle -DependencyPath $deps -ForceApplicationShutdown
+      Remove-Item -Recurse -Force $dir
+      $installed = Get-AppxPackage -Name Microsoft.DesktopAppInstaller
+      if ([version]$installed.Version -lt [version]'1.29.380.0') { throw "App Installer is $($installed.Version)" }
 # As SYSTEM in PowerShell 7, the way the fry software stage uses it.
 - name: Check that WinGet can search the catalog source
   become: true

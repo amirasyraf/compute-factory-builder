@@ -123,13 +123,8 @@ build {
 
   # Azure images must be generalized; Azure creates the login user at the next boot.
   provisioner "powershell" {
-    only = ["azure-arm.windows"]
-    inline = [
-      "while ((Get-Service RdAgent).Status -ne 'Running') { Start-Sleep -s 5 }",
-      "while ((Get-Service WindowsAzureGuestAgent).Status -ne 'Running') { Start-Sleep -s 5 }",
-      "& $env:SystemRoot\\System32\\Sysprep\\Sysprep.exe /oobe /generalize /quiet /quit /mode:vm",
-      "while ($true) { $state = (Get-ItemProperty HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Setup\\State).ImageState; if ($state -ne 'IMAGE_STATE_GENERALIZE_RESEAL_TO_OOBE') { Write-Output $state; Start-Sleep -s 10 } else { break } }",
-    ]
+    only   = ["azure-arm.windows"]
+    script = "${path.root}/sysprep.ps1"
   }
 
   post-processor "manifest" {

@@ -38,8 +38,9 @@ jobs:
     if: vars.CF_POC_MAINTENANCE != '1'
     needs: matrix
     runs-on: ubuntu-latest
-    # Windows builds (WinRM, sysprep, gallery replication) take much longer than Linux ones.
-    timeout-minutes: 90
+    # Measured: Ubuntu ~7 min, Windows on AWS ~25 min; Azure adds sysprep and gallery replication.
+    # Every wait inside a build has its own shorter deadline, so a stuck step fails, not this.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.matrix.outputs.images) }}

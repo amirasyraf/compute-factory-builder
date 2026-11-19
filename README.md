@@ -33,10 +33,14 @@ certificate on Azure) and runs the same `bake.yml` over WinRM (`pywinrm`, `ansib
 collections from `ansible/requirements.yml`). The image gets OpenSSH Server with PowerShell as its shell
 and a certificates-only `sshd_config` (port forwarding allowed for browser RDP), the principals file for
 `Administrator` (AWS) or `cfadmin` (Azure), UTC, Remote Desktop allowed, provenance in
-`C:\ProgramData\ComputeFactory\image-info.json`, PowerShell 7.6 LTS, and the `Microsoft.WinGet.Client` module for all users (as SYSTEM it works only in
+`C:\ProgramData\ComputeFactory\image-info.json`, PowerShell 7.6 LTS, WinGet (App Installer, pinned release) provisioned for all users, and the
+`Microsoft.WinGet.Client` module for all users (as SYSTEM it works only in
 PowerShell 7).
 AWS finishes with `ec2launch reset`, Azure with sysprep. No Windows updates are applied at bake time.
-A Windows bake takes much longer than Ubuntu; the job timeout is 90 minutes.
+A Windows bake takes much longer than Ubuntu; the job timeout is 60 minutes (measured: Windows on AWS ~25 minutes), and every wait inside a build
+has its own shorter deadline so a stuck step fails fast. Before sysprep, Azure removes app
+packages installed for a user but not provisioned for all users (such as the WinGet source), which
+sysprep otherwise refuses (0x80073cf2).
 
 ## Local checks
 
