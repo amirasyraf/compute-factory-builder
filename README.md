@@ -1,13 +1,13 @@
-# Vendy — Bake
+# Vendy image builder
 
-Builds golden images with Packer and Ansible for every `images.yaml` row: Ubuntu 26.04
-(`packer/ubuntu`) and Windows Server 2025 (`packer/windows`), each on AWS and Azure. Ubuntu is built
+This repo builds the golden images Vendy uses when it provisions a VM. [`images.yaml`](images.yaml)
+lists the four builds: Ubuntu 26.04 and Windows Server 2025, each on AWS and Azure. Ubuntu is built
 from the official Canonical amd64 image: an AMI in the default AWS VPC, and an Azure
 Compute Gallery version of `cf-images/cfimages/ubuntu` (from Canonical's
 Marketplace image `ubuntu-26_04-lts/server`, Gen2; version `1.<YYYYMMDD>.<hhmmss>`,
-generalized with `waagent -deprovision+user`). Pushes to `main` and manual
-dispatch run the matrix unless repository variable `CF_POC_MAINTENANCE=1` is set
-by teardown. Authentication is OIDC only: AWS (`AWS_ROLE_ARN`,
+generalized with `waagent -deprovision+user`). The workflow runs on manual dispatch or on pushes to
+`main` that change Packer, Ansible, the matrix, requirements, or the workflow. Teardown disables it
+and sets `CF_POC_MAINTENANCE=1`. Workflow authentication uses OIDC: AWS (`AWS_ROLE_ARN`,
 `AWS_REGION`) for every row, because the CA public key is read from SSM at build
 time and is never committed; Azure (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
 `AZURE_SUBSCRIPTION_ID`, `AZURE_LOCATION`, `azure/login`) for Azure rows. The
@@ -34,30 +34,39 @@ collections from `ansible/requirements.yml`). The image gets OpenSSH Server with
 and a certificates-only `sshd_config` (port forwarding allowed for browser RDP), the principals file for
 `Administrator` (AWS) or `cfadmin` (Azure), UTC, Remote Desktop allowed, provenance in
 `C:\ProgramData\ComputeFactory\image-info.json`, PowerShell 7.6 LTS, WinGet (App Installer, pinned release) provisioned for all users, and the
-`Microsoft.WinGet.Client` module for all users (as SYSTEM it works only in
-PowerShell 7).
+`Microsoft.WinGet.Client` module for all users (as SYSTEM it works only in PowerShell 7).
 AWS finishes with `ec2launch reset`, Azure with sysprep. No Windows updates are applied at bake time.
-A Windows bake takes much longer than Ubuntu; the job timeout is 60 minutes (measured: Windows on AWS ~25 minutes), and every wait inside a build
-has its own shorter deadline so a stuck step fails fast. Before sysprep, Azure removes app
+Each matrix job has a 60-minute timeout. Windows is usually slower than Ubuntu. The Ubuntu
+`cloud-init status --wait` command has no separate deadline. Before sysprep, Azure removes app
 packages installed for a user but not provisioned for all users (such as the WinGet source), which
 sysprep otherwise refuses (0x80073cf2).
 
-A failed, cancelled or timed-out job removes its own leftover build machine, `packer_*` security
-group and key pair, or Azure `pkr-*` resource group (`scripts/cleanup-build.sh`, matched by the
-`cf:bake-run` tag that Packer puts on them). Packer cannot clean up when the job is cancelled.
+When a job fails or is cancelled, the workflow attempts cleanup by its `cf:bake-run` tag. The cleanup
+step can also be interrupted, so cancellation or timeout does not guarantee that all build resources
+are gone. It never deletes published images. Check the failed job's log and use the POC lifecycle
+runbook if leftovers remain.
 
 ## Local checks
 
-Install Packer 1.16.2 and Python 3.12–3.14, then
-`pip install -r requirements-ansible.txt` and `ansible-galaxy collection install -r ansible/requirements.yml`.
-For each of `packer/ubuntu` and `packer/windows` run `packer init`, `packer fmt -check` and
-`packer validate -syntax-only`, then `ansible-playbook --syntax-check -i localhost, ansible/bake.yml`.
+Use Packer 1.16.2 and Python 3.14 to match the runner. In a Python virtual environment, run:
 
-For a local build, export `PKR_VAR_ssh_ca_public_key`, its `PKR_VAR_ssh_ca_fingerprint`
-(`SHA256:…` from `ssh-keygen -lf`), `PKR_VAR_git_sha` and, for AWS,
-`PKR_VAR_source_ami` (Canonical's Ubuntu 26.04 public SSM AMI ID) with AWS credentials, then run
-`packer build -only=amazon-ebs.ubuntu packer/ubuntu`; for Azure, `PKR_VAR_azure_subscription_id`
-with an `az login`, then `packer build -only=azure-arm.ubuntu packer/ubuntu`.
+```sh
+pip install -r requirements-ansible.txt
+ansible-galaxy collection install -r ansible/requirements.yml
+ansible-playbook --syntax-check -i localhost, ansible/bake.yml
+```
+
+For each changed matrix row, run `packer init` and `packer fmt -check` on its OS directory. Then run
+full `packer validate` with the same source selector and inputs as [the bake
+workflow](.github/workflows/bake.yml). For example, `packer validate -only=amazon-ebs.ubuntu packer/ubuntu`
+needs the matching `PKR_VAR_source_ami`, the build SHA, and the CA **public** key and its fingerprint.
+Azure rows use `azure-arm.<os>`, the subscription and location, and Azure access. Windows uses
+`PKR_VAR_os_version` from the matrix row. See the workflow for the exact inputs and their sources.
+
+Before dispatching, exercise new or changed guest commands on a disposable instance of the same
+OS and cloud. Syntax checks alone won't catch a stuck guest or broken sysprep. The workflow calls
+`packer build`; it does not run a separate preflight. `./poc up --images-only` is a real bake and
+can remove superseded images after verification.
 
 ## Extend
 
